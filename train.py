@@ -97,7 +97,7 @@ def main():
                         help='weight decay')
     parser.add_argument('--nesterov', action='store_true', default=True,
                         help='use nesterov momentum')
-    parser.add_argument('--use-ema', action='store_true', default=True,
+    parser.add_argument('--use-ema', action='store_true', default=False,
                         help='use EMA model')
     parser.add_argument('--ema-decay', default=0.999, type=float,
                         help='EMA decay rate')
@@ -122,6 +122,8 @@ def main():
                         "See details at https://nvidia.github.io/apex/amp.html")
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="For distributed training: local_rank")
+    parser.add_argument("--address", type=str, default="tcp://127.0.0.1:23458",
+                        help="address for distributed training")
     parser.add_argument('--no-progress', action='store_true',
                         help="don't use progress bar")
 
@@ -152,7 +154,7 @@ def main():
     else:
         torch.cuda.set_device(args.local_rank)
         device = torch.device('cuda', args.local_rank)
-        torch.distributed.init_process_group(backend='nccl')
+        torch.distributed.init_process_group(backend='nccl', init_method=args.address, rank=args.local_rank, world_size=8)
         args.world_size = torch.distributed.get_world_size()
         args.n_gpu = 1
 
@@ -257,6 +259,8 @@ def main():
     if args.use_ema:
         from models.ema import ModelEMA
         ema_model = ModelEMA(args, model, args.ema_decay)
+    else:
+        ema_model = None
 
     args.start_epoch = 0
 
@@ -322,6 +326,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
         losses_x = AverageMeter()
         losses_u = AverageMeter()
         mask_probs = AverageMeter()
+        noises = AverageMeter()
         if not args.no_progress:
             p_bar = tqdm(range(args.eval_step),
                          disable=args.local_rank not in [-1, 0])
@@ -336,13 +341,13 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                 inputs_x, targets_x = labeled_iter.next()
 
             try:
-                (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+                (inputs_u_w, inputs_u_s), targets_u_true = unlabeled_iter.next()
             except:
                 if args.world_size > 1:
                     unlabeled_epoch += 1
                     unlabeled_trainloader.sampler.set_epoch(unlabeled_epoch)
                 unlabeled_iter = iter(unlabeled_trainloader)
-                (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+                (inputs_u_w, inputs_u_s), targets_u_true = unlabeled_iter.next()
 
             data_time.update(time.time() - end)
             batch_size = inputs_x.shape[0]
@@ -384,8 +389,10 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             batch_time.update(time.time() - end)
             end = time.time()
             mask_probs.update(mask.mean().item())
+            if mask.sum().item() > 0:
+                noises.update(((targets_u_true.to(args.device) != targets_u) * mask).sum().item() / mask.sum().item())
             if not args.no_progress:
-                p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
+                p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. Noise: {noise:.2f}. ".format(
                     epoch=epoch + 1,
                     epochs=args.epochs,
                     batch=batch_idx + 1,
@@ -396,7 +403,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                     loss=losses.avg,
                     loss_x=losses_x.avg,
                     loss_u=losses_u.avg,
-                    mask=mask_probs.avg))
+                    mask=mask_probs.avg,
+                    noise=noises.avg,))
                 p_bar.update()
 
         if not args.no_progress:
@@ -414,6 +422,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             args.writer.add_scalar('train/2.train_loss_x', losses_x.avg, epoch)
             args.writer.add_scalar('train/3.train_loss_u', losses_u.avg, epoch)
             args.writer.add_scalar('train/4.mask', mask_probs.avg, epoch)
+            args.writer.add_scalar('train/5.noise', noises.avg, epoch)
             args.writer.add_scalar('test/1.test_acc', test_acc, epoch)
             args.writer.add_scalar('test/2.test_loss', test_loss, epoch)
 
