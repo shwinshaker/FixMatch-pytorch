@@ -35,7 +35,11 @@ def set_seed(args):
 def set_out_path(args):
     out = args.out
     if args.regularizer is not None:
-        out += '_reg=%s_retain_rate=%g' % (args.regularizer, args.reinit_retain_rate)
+        out += '_reg=%s' % args.regularizer
+        if args.regularizer == 'interpolate':
+            out += '_retain_rate=%g' % args.reinit_retain_rate
+        elif args.regularizer == 'sparse':
+            out += '_sparsity=%g' % args.reinit_sparsity
     return out
 
 def get_cosine_schedule_with_warmup(optimizer,
@@ -110,8 +114,9 @@ def main():
 
     parser.add_argument('--teacher', default='ema', type=str, help='teacher type')
     parser.add_argument('--ema-decay', default=0.999, type=float, help='EMA decay rate')
-    parser.add_argument('--regularizer', default=None, choices=['reinit'], type=str, help='model regularizer type')
+    parser.add_argument('--regularizer', default=None, choices=['interpolate', 'sparse'], type=str, help='model regularizer type')
     parser.add_argument('--reinit_retain_rate', default=0.9, type=float, help='Reinit retain rate')
+    parser.add_argument('--reinit_sparsity', default=0.3, type=float, help='Reinit minimum sparsity masked ratio')
 
     args = parser.parse_args()
     global best_acc
@@ -236,9 +241,12 @@ def main():
         teacher = ModelBootstrap(args, model, args.bootstrap_interval)
         # copy current model to be teacher every several iterations
 
-    if args.regularizer == 'reinit':
-        from models.reinit import Reinitializer
-        regularizer = Reinitializer(args, args.reinit_retain_rate, logger)
+    if args.regularizer == 'interpolate':
+        from models.reinit import Interpolator
+        regularizer = Interpolator(args, args.reinit_retain_rate)
+    elif args.regularizer == 'sparse':
+        from models.reinit import Sparsor
+        regularizer = Sparsor(args, model, args.reinit_sparsity)
     else:
         regularizer = None
 
