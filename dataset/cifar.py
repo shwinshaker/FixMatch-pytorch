@@ -18,7 +18,7 @@ normal_mean = (0.5, 0.5, 0.5)
 normal_std = (0.5, 0.5, 0.5)
 
 
-def get_cifar10(args, root):
+def get_cifar10(args, root, get_strong=True):
     transform_labeled = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(size=32,
@@ -40,9 +40,14 @@ def get_cifar10(args, root):
         root, train_labeled_idxs, train=True,
         transform=transform_labeled)
 
-    train_unlabeled_dataset = CIFAR10SSL(
-        root, train_unlabeled_idxs, train=True,
-        transform=TransformFixMatch(mean=cifar10_mean, std=cifar10_std))
+    if get_strong:
+        train_unlabeled_dataset = CIFAR10SSL(
+            root, train_unlabeled_idxs, train=True,
+            transform=TransformFixMatch(mean=cifar10_mean, std=cifar10_std))
+    else:
+        train_unlabeled_dataset = CIFAR10SSL(
+            root, train_unlabeled_idxs, train=True,
+            transform=transform_labeled)
 
     test_dataset = datasets.CIFAR10(
         root, train=False, transform=transform_val, download=False)
@@ -50,7 +55,7 @@ def get_cifar10(args, root):
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
 
-def get_cifar100(args, root):
+def get_cifar100(args, root, get_strong=True):
 
     transform_labeled = transforms.Compose([
         transforms.RandomHorizontalFlip(),
@@ -74,9 +79,14 @@ def get_cifar100(args, root):
         root, train_labeled_idxs, train=True,
         transform=transform_labeled)
 
-    train_unlabeled_dataset = CIFAR100SSL(
-        root, train_unlabeled_idxs, train=True,
-        transform=TransformFixMatch(mean=cifar100_mean, std=cifar100_std))
+    if get_strong:
+        train_unlabeled_dataset = CIFAR100SSL(
+            root, train_unlabeled_idxs, train=True,
+            transform=TransformFixMatch(mean=cifar100_mean, std=cifar100_std))
+    else:
+        train_unlabeled_dataset = CIFAR100SSL(
+            root, train_unlabeled_idxs, train=True,
+            transform=transform_labeled)
 
     test_dataset = datasets.CIFAR100(
         root, train=False, transform=transform_val, download=False)
@@ -99,7 +109,7 @@ def x_u_split(args, labels):
 
     if args.expand_labels or args.num_labeled < args.batch_size:
         num_expand_x = math.ceil(
-            args.batch_size * args.eval_step / args.num_labeled)
+            args.batch_size * args.steps_per_epoch / args.num_labeled)
         labeled_idx = np.hstack([labeled_idx for _ in range(num_expand_x)])
     np.random.shuffle(labeled_idx)
     return labeled_idx, unlabeled_idx
