@@ -369,7 +369,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                     scaled_loss.backward()
             else:
                 loss.backward()
-            if regularizer in ['sparse']:
+            if args.regularizer in ['sparse']:
                 regularizer.update(model, epoch, batch_idx)
             optimizer.step()
             model.zero_grad()
@@ -378,7 +378,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             scheduler.step()
             # ema model needs to be update every model update? or update every epoch?
             teacher.update(model)
-            if regularizer in ['interpolate']:
+            if args.regularizer in ['interpolate']:
                 regularizer.update(model, epoch, batch_idx)
 
             # record
