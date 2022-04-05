@@ -42,7 +42,7 @@ class Sparsor:
         
         self.args = args
         self.model = model
-        self.min_sparsity = sparsity
+        self.max_sparsity = sparsity
         self.sparsity = sparsity
 
         # Get only conv/fc layers.
@@ -85,7 +85,8 @@ class Sparsor:
                 num_mask += self.masks[name].numel()
             logger.info('Mask updated with sparsity {:.3f}'.format(sum_masked.item() / num_mask))
 
-            self.sparsity = self.min_sparsity + (1 - self.min_sparsity) * (epoch + 1) / self.args.epochs
+            # gradually decreasing sparsity during training (thus increasing effective capacity)
+            self.sparsity = self.max_sparsity * (1 - (epoch + 1) / self.args.epochs)
 
         for name in self.layers:
             self.layers[name].data[self.masks[name]] = 0
