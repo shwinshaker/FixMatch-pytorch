@@ -111,6 +111,8 @@ def main():
                         help="For distributed training: local_rank")
     parser.add_argument('--no-progress', action='store_true',
                         help="don't use progress bar")
+    parser.add_argument("--address", type=str, default="tcp://127.0.0.1:23458", help="address for distributed training")
+    parser.add_argument('--world-size', default=8, type=int, help='world size')
 
     parser.add_argument('--teacher', default='ema', type=str, help='teacher type')
     parser.add_argument('--ema-decay', default=0.999, type=float, help='EMA decay rate')
@@ -128,8 +130,9 @@ def main():
     else:
         torch.cuda.set_device(args.local_rank)
         device = torch.device('cuda', args.local_rank)
-        torch.distributed.init_process_group(backend='nccl')
-        args.world_size = torch.distributed.get_world_size()
+        # torch.distributed.init_process_group(backend='nccl')
+        torch.distributed.init_process_group(backend='nccl', init_method=args.address, rank=args.local_rank, world_size=args.world_size)
+        world_size = torch.distributed.get_world_size()
         args.n_gpu = 1
 
     args.device = device
@@ -144,6 +147,7 @@ def main():
         f"device: {args.device}, "
         f"n_gpu: {args.n_gpu}, "
         f"distributed training: {bool(args.local_rank != -1)}, "
+        f"world size: {world_size}, "
         f"16-bits training: {args.amp}",)
 
     logger.info(dict(args._get_kwargs()))
@@ -243,7 +247,7 @@ def main():
 
     if args.regularizer == 'interpolate':
         from models.reinit import Interpolator
-        regularizer = Interpolator(args, args.reinit_retain_rate)
+        regularizer = Interpolator(args, model, args.reinit_retain_rate)
     elif args.regularizer == 'sparse':
         from models.reinit import Sparsor
         regularizer = Sparsor(args, model, args.reinit_sparsity)

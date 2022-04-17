@@ -83,8 +83,9 @@ def main():
                         help='dataset name')
     parser.add_argument('--total-steps', default=2**20, type=int,
                         help='number of total steps to run')
-    parser.add_argument('--eval-step', default=1024, type=int,
-                        help='number of eval steps to run')
+    # parser.add_argument('--eval-step', default=1024, type=int,
+                        # help='number of eval steps to run')
+    parser.add_argument('--steps-per-epoch', default=1024, type=int, help='number of steps per epoch to run')
     parser.add_argument('--start-epoch', default=0, type=int,
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('--batch-size', default=64, type=int,
@@ -252,7 +253,7 @@ def main():
     optimizer = optim.SGD(grouped_parameters, lr=args.lr,
                           momentum=0.9, nesterov=args.nesterov)
 
-    args.epochs = math.ceil(args.total_steps / args.eval_step)
+    args.epochs = math.ceil(args.total_steps / args.steps_per_epoch)
     scheduler = get_cosine_schedule_with_warmup(
         optimizer, args.warmup, args.total_steps)
 
@@ -318,8 +319,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
     labeled_iter = iter(labeled_trainloader)
     unlabeled_iter = iter(unlabeled_trainloader)
 
-    model.train()
     for epoch in range(args.start_epoch, args.epochs):
+        model.train()
         batch_time = AverageMeter()
         data_time = AverageMeter()
         losses = AverageMeter()
@@ -328,9 +329,9 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
         mask_probs = AverageMeter()
         noises = AverageMeter()
         if not args.no_progress:
-            p_bar = tqdm(range(args.eval_step),
+            p_bar = tqdm(range(args.steps_per_epoch),
                          disable=args.local_rank not in [-1, 0])
-        for batch_idx in range(args.eval_step):
+        for batch_idx in range(args.steps_per_epoch):
             try:
                 inputs_x, targets_x = labeled_iter.next()
             except:
@@ -396,7 +397,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                     epoch=epoch + 1,
                     epochs=args.epochs,
                     batch=batch_idx + 1,
-                    iter=args.eval_step,
+                    iter=args.steps_per_epoch,
                     lr=scheduler.get_last_lr()[0],
                     data=data_time.avg,
                     bt=batch_time.avg,
